@@ -1,3 +1,7 @@
+<p align="center">
+    <img src="img/LoadDistribution.svg" />
+</p>
+
 # Load Distribution By Genetic Algorithm
 
 <i>
