@@ -1,3 +1,5 @@
+# There are implementations of two methods: Genetic Algorithm and Gurobi Package
+
 """
     Heuristic: Genetic Algorithm
 """
