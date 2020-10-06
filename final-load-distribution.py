@@ -360,3 +360,265 @@ def readInProcessTime():
 #main code
 p = readInProcessTime()
 Solve(p)
+
+
+"""
+    Heuristic: Another Implmementation of Genetic Algorithm
+"""
+import random
+
+import numpy as np
+import pandas as pd
+
+df = pd.read_csv('loadDistribution.csv')
+df = df.drop(columns=["Unnamed: 0"])
+data = df.to_numpy()
+
+
+# Problem model
+class Model:
+    def __init__(self, data):
+        self.durations = data
+        self.n_nodes = len(data)
+        self.n_jobs = len(data[0])
+        self.max_possible_total_runtime = sum(
+            [max(data[:, i]) for i in range(self.n_jobs)]
+        )
+        self.variables = np.zeros(self.n_nodes+1)
+
+    def info(self):
+        print("The maximum possible total runtime:", self.max_possible_total_runtime)
+        print("The number of node workers:", self.n_nodes)
+        print("The number of jobs:", self.n_jobs)
+
+    def obj_func(self):
+        return max(self.variables)
+
+    def assign_job_to_node(self, node, job):
+        # Get the amount of time in which the node finished the given job
+        duration = self.durations[node-1][job-1]
+
+        if(self.variables[node] == 0):
+            self.variables[node] = duration
+        else:
+            self.variables[node] += duration
+
+    def refresh(self):
+        self.variables = np.zeros(self.n_nodes+1)
+
+
+class Population:
+    def __init__(self, mutation_rate, n_members, data):
+        self.data = data
+        self.mutation_rate = mutation_rate
+        self.n_members = n_members
+        self.population = []
+
+        # Generate population
+        for i in range(self.n_members):
+            self.population.append(DNA(self.data))
+            self.population[i].calc_fitness()
+
+    def calc_fitness(self):
+        for i in range(self.n_members):
+            self.population[i].calc_fitness()
+
+    def calc_prob(self):
+        sum_fitness = 0
+        for i in range(self.n_members):
+            sum_fitness += self.population[i].fitness
+
+        for i in range(self.n_members):
+            self.population[i].prob = (1 - (self.population[i].fitness / sum_fitness))
+
+    def generate_next_gen(self):
+        self.calc_prob()
+
+        # Sort the population by the objective function score.
+        sorted_pop = sorted(
+            self.population,
+            key=lambda x: x.model.obj_func(),
+            reverse=True
+        )
+
+        # Pick the 2 parents - best 2
+        partnerA = sorted_pop[0]
+        partnerB = sorted_pop[1]
+
+        # Create the 2 children.
+        child1, child2 = partnerA.crossover(partnerB)
+
+        child1.mutate(self.mutation_rate)
+        child2.mutate(self.mutation_rate)
+        child1.redefine_timeline()
+        child2.redefine_timeline()
+        sorted_pop.pop()
+        sorted_pop.pop()
+        self.population.append(child1)
+        self.population.append(child2)
+
+
+class DNA:
+    def __init__(self, data):
+        self.fitness = 0.0
+        self.model = Model(data)
+        self.prob = 0.0
+        self.genes = [[] for _ in range(self.model.n_nodes+1)]
+
+        # Assign random jobs to node
+        for i in range(1, self.model.n_jobs+1):
+            random_node = random.randint(1, self.model.n_nodes)
+            self.genes[random_node].append(i)
+
+        # Fill job id in timeline
+        for i in range(1, self.model.n_nodes+1):
+            for j in range(len(self.genes[i])):
+                self.model.assign_job_to_node(node=i, job=self.genes[i][j])
+
+    def redefine_timeline(self):
+        self.model.refresh()
+        for i in range(1, self.model.n_nodes+1):
+            for j in range(len(self.genes[i])):
+                self.model.assign_job_to_node(node=i, job=self.genes[i][j])
+
+    def calc_fitness(self):
+        self.fitness = (self.model.obj_func() / self.model.max_possible_total_runtime)
+        self.fitness = pow(self.fitness, 2)
+
+    def crossover(self, partner):
+        # This is a straight crossover for the parents at a random crossover point.
+        # We then chack to make sure that all the nodes are still included and that none
+        # are duplicated.
+        crossover_point = random.randint(1, len(self.genes))
+
+        child1 = []
+        child2 = []
+        for i in range(crossover_point):
+            child1.append(self.genes[i][:])
+            child2.append(partner.genes[i][:])
+
+        for i in range(crossover_point, len(self.genes)):
+            child1.append(partner.genes[i][:])
+            child2.append(self.genes[i][:])
+
+        list1 = []
+        list2 = []
+        jobs = set(range(1, 12))
+        remove1l = []
+        for gene in child1:
+            remove1 = []
+            for j, node in enumerate(gene):
+                if node not in list1:
+                    list1.append(node)
+                else:
+                    remove1.append(j)
+                    remove1l.append((node, j))
+            if remove1:
+                remove1.sort(reverse=True)
+                for k in remove1:
+                    del gene[k]
+        for gene2 in child2:
+            remove2 = []
+            for j, node in enumerate(gene2):
+                if node not in list2:
+                    list2.append(node)
+                else:
+                    remove2.append(j)
+            if remove2:
+                remove2.sort(reverse=True)
+                for k in remove2:
+                    del gene2[k]
+        for node in jobs:
+            if node not in list1:
+                child1[random.randint(1, self.model.n_nodes)].append(node)
+
+            if node not in list2:
+                child2[random.randint(1, self.model.n_nodes)].append(node)
+
+        new_child1 = DNA(self.model.durations)
+        new_child1.genes = child1
+        new_child2 = DNA(self.model.durations)
+        new_child2.genes = child2
+
+        return new_child1, new_child2
+
+    def mutate(self, mutation_rate):
+        # Decide whether to mutate based on the mutation rate.
+        # Here we are randomly selecting a gene and replacing the gene with a random
+        # value. Then we are removing that value from wherever it exists currently and
+        # then adding in the removed elements at random locations.
+        if(random.uniform(0, 1) < mutation_rate):
+            mutation_node_idx = random.randint(1, self.model.n_nodes)
+            temp_node = self.genes[mutation_node_idx]
+            new_value = random.randint(1, self.model.n_jobs)
+            for gene in self.genes:
+                for node in gene:
+                    if node == new_value:
+                        gene.remove(node)
+                        break
+
+            self.genes[mutation_node_idx] = [new_value]
+            for temp in temp_node:
+                if temp != new_value:
+                    self.genes[random.randint(1, len(self.genes) - 1)].append(temp)
+
+
+class GeneticAlgorithm:
+    def __init__(self, mutation_rate, n_members, data, generations):
+        self.mutation_rate = mutation_rate
+        self.population = None
+        self.n_members = n_members
+        self.data = data
+        self.chosen = []
+        self.generations = generations
+        self.optimal = None
+
+    def find_optimal(self):
+        # Generate inital population
+        self.population = Population(
+            mutation_rate=self.mutation_rate,
+            n_members=self.n_members,
+            data=self.data)
+
+        n_generations = self.generations
+        while n_generations > 0:
+            # Choose the best one
+            self.optimal = self.population.population[0]
+            for i in range(self.n_members):
+                if self.optimal.fitness > self.population.population[i].fitness:
+                    self.optimal = self.population.population[i]
+
+            # Create next generation
+            self.population.generate_next_gen()
+
+            # Calculate fitness
+            self.population.calc_fitness()
+
+            n_generations -= 1
+
+        return self.optimal
+
+    def meets_constraints(self):
+        max = 0
+        for node_id in range(1, self.optimal.model.n_nodes + 1):
+            gene = self.optimal.genes[node_id]
+
+            for job_id in gene:
+                temp = self.optimal.model.durations[node_id-1][job_id-1]
+                if temp > max:
+                    max = temp
+        return max
+
+    def print_optimal(self):
+        print("The total runtime to complete all jobs:", self.optimal.model.obj_func())
+        for i in range(1, self.optimal.model.n_nodes + 1):
+            print(
+                f"Node {i} work on task", ", ".join(
+                    [str(x) for x in self.optimal.genes[i]]
+                )
+            )
+
+
+gen = GeneticAlgorithm(mutation_rate=0.5, n_members=100, data=data, generations=1000)
+gen.find_optimal()
+gen.print_optimal()
