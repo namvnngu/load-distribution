@@ -12,12 +12,15 @@ an efficiency (processing power), measured in number of operations per second.
 Minimise the total runtime to complete all jobs.
 </i>
 
-**Solution**: Implemented Genetic Algorithm to find the minimum total runtime.
+**Solution**: 
+- Implemented Genetic Algorithm to find the minimum total runtime
+- Implemented [Gurobi Package](https://www.gurobi.com/)
 
 **Package Requirement**:
 
-- Numpy
-- Pandas
-- Matplotlib
+- numpy
+- pandas
+- matplotlib
+- gurobi
 
-Made by Nam with ❤️
+Made by My Team (Alex, Tiv, Nam) with ❤️
